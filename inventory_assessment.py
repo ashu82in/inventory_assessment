@@ -1,21 +1,21 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.express as px
 
-st.title("Inventory Analysis Dashboard")
+st.set_page_config(page_title="Inventory Dashboard", layout="wide")
 
-uploaded_file = st.file_uploader("Upload Inventory File", type=["xlsx", "csv"])
+st.title("Inventory Analytics Dashboard")
 
-if uploaded_file is not None:
+# Upload File
+uploaded_file = st.file_uploader("Upload Inventory Excel/CSV File", type=["xlsx","csv"])
+
+if uploaded_file:
 
     # Read file
-    if uploaded_file.name.endswith(".csv"):
+    if uploaded_file.name.endswith("csv"):
         df = pd.read_csv(uploaded_file)
     else:
         df = pd.read_excel(uploaded_file)
-
-    st.subheader("Uploaded Data")
-    st.write(df)
 
     required_columns = [
         "Date",
@@ -25,38 +25,64 @@ if uploaded_file is not None:
         "Closing Balance"
     ]
 
-    # Validate columns
-    if all(col in df.columns for col in required_columns):
+    if not all(col in df.columns for col in required_columns):
+        st.error("File missing required columns")
+        st.stop()
 
-        # Convert date
-        df["Date"] = pd.to_datetime(df["Date"])
-        df = df.sort_values("Date")
+    df["Date"] = pd.to_datetime(df["Date"])
+    df = df.sort_values("Date")
 
-        st.success("File validated successfully")
+    # Sidebar filters
+    st.sidebar.header("Filters")
 
-        # Demand Histogram
-        st.subheader("Demand Distribution")
+    start_date = st.sidebar.date_input(
+        "Start Date", df["Date"].min()
+    )
 
-        fig1, ax1 = plt.subplots()
-        ax1.hist(df["Demand"], bins=20)
-        ax1.set_xlabel("Demand")
-        ax1.set_ylabel("Frequency")
-        ax1.set_title("Demand Histogram")
+    end_date = st.sidebar.date_input(
+        "End Date", df["Date"].max()
+    )
 
-        st.pyplot(fig1)
+    df = df[(df["Date"] >= pd.to_datetime(start_date)) &
+            (df["Date"] <= pd.to_datetime(end_date))]
 
-        # Closing Balance Plot
-        st.subheader("Daily Closing Inventory")
+    # KPIs
+    col1, col2, col3, col4 = st.columns(4)
 
-        fig2, ax2 = plt.subplots()
-        ax2.plot(df["Date"], df["Closing Balance"], marker="o")
-        ax2.set_xlabel("Date")
-        ax2.set_ylabel("Closing Balance")
-        ax2.set_title("Inventory Closing Balance Over Time")
+    col1.metric("Average Demand", round(df["Demand"].mean(),2))
+    col2.metric("Max Demand", df["Demand"].max())
+    col3.metric("Min Inventory", df["Closing Balance"].min())
+    col4.metric("Stockout Days", (df["Closing Balance"]==0).sum())
 
-        plt.xticks(rotation=45)
+    st.divider()
 
-        st.pyplot(fig2)
+    # Inventory chart
+    st.subheader("Inventory Level Over Time")
 
-    else:
-        st.error("Uploaded file does not contain required columns")
+    fig_inventory = px.line(
+        df,
+        x="Date",
+        y="Closing Balance",
+        title="Daily Closing Inventory"
+    )
+
+    st.plotly_chart(fig_inventory, use_container_width=True)
+
+    # Demand histogram
+    st.subheader("Demand Distribution")
+
+    bins = st.slider("Number of Histogram Bins", 5, 50, 20)
+
+    fig_hist = px.histogram(
+        df,
+        x="Demand",
+        nbins=bins,
+        title="Demand Histogram"
+    )
+
+    st.plotly_chart(fig_hist, use_container_width=True)
+
+    # Data table
+    st.subheader("Data Table")
+
+    st.dataframe(df, use_container_width=True)
