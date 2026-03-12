@@ -1,17 +1,14 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
 
 st.title("Inventory Policy Simulator")
 
-# Sidebar Inputs
-st.sidebar.header("Inventory Parameters")
-
+# Sidebar inputs
 opening_balance = st.sidebar.number_input("Opening Balance", value=500)
 avg_demand = st.sidebar.number_input("Average Demand", value=25)
 cov = st.sidebar.number_input("Coefficient of Variation", value=0.8)
-lead_time = st.sidebar.number_input("Lead Time (days)", value=3)
+lead_time = st.sidebar.number_input("Lead Time", value=3)
 reorder_point = st.sidebar.number_input("Reorder Point", value=200)
 order_qty = st.sidebar.number_input("Order Quantity", value=300)
 num_days = st.sidebar.slider("Simulation Days", 100, 2000, 365)
@@ -26,80 +23,67 @@ demand = np.maximum(
 
 dates = pd.date_range(start="2024-01-01", periods=num_days)
 
-opening = []
-shipment = []
-pipeline_today = []
-total_pipeline = []
-new_orders = []
-closing = []
-closing_with_pipeline = []
-
 inventory = opening_balance
-pipeline = []
+pipeline_orders = []
+
+data = []
 
 for day in range(num_days):
 
-    received_today = 0
-
-    # Check arriving shipments
-    for order in pipeline.copy():
+    # Receive shipments
+    shipment_received = 0
+    for order in pipeline_orders.copy():
         if order[0] == day:
-            received_today += order[1]
-            pipeline.remove(order)
+            shipment_received += order[1]
+            pipeline_orders.remove(order)
 
-    inventory += received_today
+    opening = inventory
 
-    opening.append(inventory)
-    shipment.append(received_today)
+    inventory += shipment_received
 
-    # Demand
-    inventory -= demand[day]
+    demand_today = demand[day]
+
+    inventory -= demand_today
     inventory = max(inventory, 0)
 
-    # Pipeline calculation
-    pipeline_qty = sum(qty for arrival, qty in pipeline)
-    pipeline_today.append(pipeline_qty)
+    # Pipeline quantity
+    pipeline_qty = sum(qty for arrival, qty in pipeline_orders)
+
+    # Inventory position
+    total_order_pipeline = opening - demand_today + shipment_received + pipeline_qty
 
     new_order = 0
 
-    # Reorder decision
-    if inventory + pipeline_qty <= reorder_point:
+    # Reorder rule (your logic)
+    if total_order_pipeline < reorder_point:
         new_order = order_qty
-        pipeline.append((day + lead_time, order_qty))
+        pipeline_orders.append((day + lead_time, order_qty))
 
-    new_orders.append(new_order)
+    closing = inventory
+    closing_with_pipeline = closing + sum(qty for arrival, qty in pipeline_orders)
 
-    pipeline_qty = sum(qty for arrival, qty in pipeline)
-    total_pipeline.append(pipeline_qty)
+    data.append([
+        dates[day],
+        opening,
+        demand_today,
+        shipment_received,
+        pipeline_qty,
+        total_order_pipeline,
+        new_order,
+        closing,
+        closing_with_pipeline
+    ])
 
-    closing.append(inventory)
-    closing_with_pipeline.append(inventory + pipeline_qty)
-
-# Dataframe
-df = pd.DataFrame({
-    "Date": dates,
-    "Opening Balance": opening,
-    "Demand": demand,
-    "Shipment Received": shipment,
-    "Pipeline Order": pipeline_today,
-    "Total Order Including pipeline Order": total_pipeline,
-    "New Order": new_orders,
-    "Closing Balance": closing,
-    "Closing Balance Including pipeline Orders": closing_with_pipeline
-})
-
-st.subheader("Simulation Data")
+df = pd.DataFrame(data, columns=[
+    "Date",
+    "Opening Balance",
+    "Demand",
+    "Shipment Received",
+    "Pipeline Order",
+    "Total Order Including pipeline Order",
+    "New Order",
+    "Closing Balance",
+    "Closing Balance Including pipeline Orders"
+])
 
 st.dataframe(df)
-
-# Inventory Chart
-fig = px.line(
-    df,
-    x="Date",
-    y="Closing Balance",
-    title="Daily Closing Inventory"
-)
-
-fig.update_yaxes(rangemode="tozero")
-
-st.plotly_chart(fig, use_container_width=True)
