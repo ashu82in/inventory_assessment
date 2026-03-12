@@ -163,12 +163,70 @@ total_ordering_cost = number_of_orders * ordering_cost
 
 total_inventory_cost = total_holding_cost + total_ordering_cost
 
-# EOQ
+# ------------------------------------------------
+# EOQ Calculation
+# ------------------------------------------------
+
 annual_demand = avg_demand * 365
 
 holding_cost_per_unit = unit_value * holding_cost_rate
 
 eoq = np.sqrt((2 * annual_demand * ordering_cost) / holding_cost_per_unit)
+
+# ------------------------------------------------
+# Cost Comparison Function
+# ------------------------------------------------
+
+def simulate_inventory_cost(order_quantity):
+
+    inventory = opening_balance
+    pipeline_orders = []
+
+    holding_cost_total = 0
+    orders_count = 0
+
+    for day in range(num_days):
+
+        shipment_received = 0
+
+        for order in pipeline_orders.copy():
+            if order[0] == day:
+                shipment_received += order[1]
+                pipeline_orders.remove(order)
+
+        inventory += shipment_received
+
+        demand_today = demand[day]
+
+        inventory -= demand_today
+
+        if inventory < 0:
+            inventory = 0
+
+        pipeline_qty = sum(qty for arrival, qty in pipeline_orders)
+
+        inventory_position = inventory + pipeline_qty
+
+        if inventory_position < reorder_point:
+            pipeline_orders.append((day + lead_time, order_quantity))
+            orders_count += 1
+
+        closing_with_pipeline = inventory + sum(qty for arrival, qty in pipeline_orders)
+
+        inventory_value = closing_with_pipeline * unit_value
+
+        holding_cost_today = inventory_value * holding_cost_rate / 365
+
+        holding_cost_total += holding_cost_today
+
+    ordering_cost_total = orders_count * ordering_cost
+
+    total_cost = holding_cost_total + ordering_cost_total
+
+    return total_cost
+
+cost_current_policy = simulate_inventory_cost(order_qty)
+cost_eoq_policy = simulate_inventory_cost(int(eoq))
 
 # ------------------------------------------------
 # KPI Display
@@ -207,6 +265,14 @@ e1,e2 = st.columns(2)
 e1.metric("Economic Order Quantity", round(eoq,0))
 e2.metric("Selected Order Quantity", order_qty)
 
+st.subheader("Cost Comparison")
+
+k1,k2,k3 = st.columns(3)
+
+k1.metric("Cost with Current Policy", round(cost_current_policy,0))
+k2.metric("Cost with EOQ", round(cost_eoq_policy,0))
+k3.metric("Savings Using EOQ", round(cost_current_policy-cost_eoq_policy,0))
+
 st.divider()
 
 # ------------------------------------------------
@@ -231,7 +297,6 @@ fig.add_trace(go.Scatter(
 
 fig.add_hline(y=reorder_point,line_dash="dash",annotation_text="Reorder Point")
 
-# stockouts
 stockouts = df[df["Closing Balance"] == 0]
 
 fig.add_trace(go.Scatter(
@@ -242,7 +307,6 @@ fig.add_trace(go.Scatter(
     marker=dict(color="red",size=9)
 ))
 
-# reorder markers
 reorders = df[df["New Order"] > 0]
 
 fig.add_trace(go.Scatter(
@@ -253,7 +317,6 @@ fig.add_trace(go.Scatter(
     marker=dict(color="green",symbol="triangle-up",size=10)
 ))
 
-# risk zones
 fig.add_hrect(y0=0,y1=reorder_point*0.5,fillcolor="red",opacity=0.08)
 fig.add_hrect(y0=reorder_point*0.5,y1=reorder_point,fillcolor="yellow",opacity=0.08)
 fig.add_hrect(y0=reorder_point,
