@@ -1,21 +1,28 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+
+st.set_page_config(layout="wide")
 
 st.title("Inventory Policy Simulator")
 
-# Sidebar inputs
+# Sidebar Inputs
+st.sidebar.header("Inventory Inputs")
+
 opening_balance = st.sidebar.number_input("Opening Balance", value=500)
 avg_demand = st.sidebar.number_input("Average Demand", value=25)
 cov = st.sidebar.number_input("Coefficient of Variation", value=0.8)
-lead_time = st.sidebar.number_input("Lead Time", value=3)
+lead_time = st.sidebar.number_input("Lead Time (Days)", value=3)
 reorder_point = st.sidebar.number_input("Reorder Point", value=200)
 order_qty = st.sidebar.number_input("Order Quantity", value=300)
+unit_value = st.sidebar.number_input("Value Per Unit", value=100)
 num_days = st.sidebar.slider("Simulation Days", 100, 2000, 365)
 
+# Demand Simulation
 std_demand = avg_demand * cov
 
-# Generate demand
 demand = np.maximum(
     0,
     np.random.normal(avg_demand, std_demand, num_days)
@@ -28,10 +35,11 @@ pipeline_orders = []
 
 data = []
 
+# Simulation Loop
 for day in range(num_days):
 
-    # Receive shipments
     shipment_received = 0
+
     for order in pipeline_orders.copy():
         if order[0] == day:
             shipment_received += order[1]
@@ -44,22 +52,22 @@ for day in range(num_days):
     demand_today = demand[day]
 
     inventory -= demand_today
-    inventory = max(inventory, 0)
 
-    # Pipeline quantity
+    if inventory < 0:
+        inventory = 0
+
     pipeline_qty = sum(qty for arrival, qty in pipeline_orders)
 
-    # Inventory position
-    total_order_pipeline = opening - demand_today + shipment_received + pipeline_qty
+    inventory_position = opening - demand_today + shipment_received + pipeline_qty
 
     new_order = 0
 
-    # Reorder rule (your logic)
-    if total_order_pipeline < reorder_point:
+    if inventory_position < reorder_point:
         new_order = order_qty
         pipeline_orders.append((day + lead_time, order_qty))
 
     closing = inventory
+
     closing_with_pipeline = closing + sum(qty for arrival, qty in pipeline_orders)
 
     data.append([
@@ -68,22 +76,195 @@ for day in range(num_days):
         demand_today,
         shipment_received,
         pipeline_qty,
-        total_order_pipeline,
+        inventory_position,
         new_order,
         closing,
         closing_with_pipeline
     ])
 
+# DataFrame
 df = pd.DataFrame(data, columns=[
     "Date",
     "Opening Balance",
     "Demand",
     "Shipment Received",
     "Pipeline Order",
-    "Total Order Including pipeline Order",
+    "Inventory Position",
     "New Order",
     "Closing Balance",
-    "Closing Balance Including pipeline Orders"
+    "Closing Balance Including Pipeline"
 ])
+
+# KPI Calculations
+stockout_days = (df["Closing Balance"] == 0).sum()
+
+average_inventory = df["Closing Balance Including Pipeline"].mean()
+
+average_age_inventory = average_inventory / df["Demand"].mean()
+
+df["Blocked Working Capital"] = df["Inventory Position"] * unit_value
+
+average_working_capital = df["Blocked Working Capital"].mean()
+
+# KPI Display
+st.subheader("Key Inventory KPIs")
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric("Stockout Days", stockout_days)
+
+col2.metric(
+    "Average Age of Inventory (Days)",
+    round(average_age_inventory,1)
+)
+
+col3.metric(
+    "Average Inventory",
+    round(average_inventory,0)
+)
+
+col4.metric(
+    "Avg Blocked Working Capital",
+    round(average_working_capital,0)
+)
+
+st.divider()
+
+# Inventory Chart
+st.subheader("Inventory Behaviour")
+
+fig = go.Figure()
+
+fig.add_trace(go.Scatter(
+    x=df["Date"],
+    y=df["Closing Balance"],
+    name="Closing Inventory"
+))
+
+fig.add_trace(go.Scatter(
+    x=df["Date"],
+    y=df["Closing Balance Including Pipeline"],
+    name="Inventory Position"
+))
+
+fig.add_hline(
+    y=reorder_point,
+    line_dash="dash",
+    annotation_text="Reorder Point"
+)
+
+# Stockouts
+stockouts = df[df["Closing Balance"] == 0]
+
+fig.add_trace(go.Scatter(
+    x=stockouts["Date"],
+    y=stockouts["Closing Balance"],
+    mode="markers",
+    name="Stockout",
+    marker=dict(color="red", size=8)
+))
+
+# Reorder triggers
+reorders = df[df["New Order"] > 0]
+
+fig.add_trace(go.Scatter(
+    x=reorders["Date"],
+    y=reorders["Closing Balance"],
+    mode="markers",
+    name="Reorder Trigger",
+    marker=dict(color="green", size=9, symbol="triangle-up")
+))
+
+fig.update_yaxes(rangemode="tozero")
+
+st.plotly_chart(fig, use_container_width=True)
+
+# Pipeline Inventory Chart
+st.subheader("Pipeline Inventory (Orders in Transit)")
+
+fig_pipeline = px.bar(
+    df,
+    x="Date",
+    y="Pipeline Order",
+    title="Pipeline Inventory Over Time"
+)
+
+st.plotly_chart(fig_pipeline, use_container_width=True)
+
+# Orders Chart
+st.subheader("Orders Placed")
+
+orders = df[df["New Order"] > 0]
+
+fig_orders = px.scatter(
+    orders,
+    x="Date",
+    y="New Order"
+)
+
+st.plotly_chart(fig_orders, use_container_width=True)
+
+# Demand Histogram
+st.subheader("Demand Distribution")
+
+fig_hist = px.histogram(
+    df,
+    x="Demand",
+    nbins=20
+)
+
+st.plotly_chart(fig_hist, use_container_width=True)
+
+# Working Capital Chart
+st.subheader("Blocked Working Capital")
+
+fig_wc = px.line(
+    df,
+    x="Date",
+    y="Blocked Working Capital"
+)
+
+st.plotly_chart(fig_wc, use_container_width=True)
+
+# Inventory Waterfall
+st.subheader("Inventory Flow Waterfall")
+
+selected_day = st.slider(
+    "Select Day",
+    0,
+    len(df)-1,
+    0
+)
+
+row = df.iloc[selected_day]
+
+fig_waterfall = go.Figure(go.Waterfall(
+
+    measure=["absolute","relative","relative","total"],
+
+    x=[
+        "Opening Balance",
+        "Demand",
+        "Shipment Received",
+        "Closing Balance"
+    ],
+
+    y=[
+        row["Opening Balance"],
+        -row["Demand"],
+        row["Shipment Received"],
+        row["Closing Balance"]
+    ]
+
+))
+
+fig_waterfall.update_layout(
+    title=f"Inventory Flow on {row['Date'].date()}"
+)
+
+st.plotly_chart(fig_waterfall, use_container_width=True)
+
+# Data Table
+st.subheader("Simulation Data")
 
 st.dataframe(df)
