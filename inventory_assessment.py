@@ -19,8 +19,8 @@ st.markdown(
     
     /* Optional: Adjust the sidebar width if it also interferes */
     [data-testid="stSidebar"] {
-        padding-left: 5rem;
-        padding-right: 5rem;
+        padding-left: 3rem;
+        # padding-right: 5rem;
     }
     </style>
     """,
