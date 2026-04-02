@@ -6,6 +6,27 @@ import plotly.graph_objects as go
 
 st.set_page_config(layout="wide")
 
+# Custom CSS to add padding to the main container
+st.markdown(
+    """
+    <style>
+    /* Target the main content area */
+    .block-container {
+        padding-left: 5rem;
+        padding-right: 5rem;
+        padding-top: 2rem;
+    }
+    
+    /* Optional: Adjust the sidebar width if it also interferes */
+    [data-testid="stSidebar"] {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("Inventory Policy Simulator")
 
 # ------------------------------------------------
