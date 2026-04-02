@@ -12,8 +12,8 @@ st.markdown(
     <style>
     /* Target the main content area */
     .block-container {
-        padding-left: 5rem;
-        padding-right: 5rem;
+        padding-left: 10rem;
+        padding-right: 10rem;
         padding-top: 2rem;
     }
     
