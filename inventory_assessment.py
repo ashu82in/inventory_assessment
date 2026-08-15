@@ -350,6 +350,15 @@ fig.update_yaxes(rangemode="tozero")
 st.plotly_chart(fig,use_container_width=True)
 
 # ------------------------------------------------
+# Data Table
+# ------------------------------------------------
+
+st.subheader("Simulation Data")
+
+st.dataframe(df)
+
+
+# ------------------------------------------------
 # Pipeline Inventory Chart
 # ------------------------------------------------
 
